@@ -56,10 +56,19 @@ def new_state(
     pipeline_code: str,
     file_path: str,
     schema_info: str = "",
-    runbook: str = "",
+    runbook: str | None = None,
 ) -> DebugState:
-    """สร้าง state เริ่มต้น พร้อม field ที่จำเป็นครบ"""
+    """สร้าง state เริ่มต้น พร้อม field ที่จำเป็นครบ
+
+    runbook: ถ้าไม่ส่งมา (None) จะ auto-load จาก runbooks/<issue_id>.md
+             ส่ง "" มาตรงๆ = บังคับไม่มี runbook (override การ auto-load)
+    """
     import uuid
+
+    # auto-load runbook เข้า Context (side-effect อ่านไฟล์อยู่ใน integrations)
+    if runbook is None:
+        from integrations.runbook import load_runbook
+        runbook = load_runbook(issue_id)
 
     return DebugState(
         issue_id=issue_id,

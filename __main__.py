@@ -20,7 +20,7 @@ def run(issue_id: str):
         pipeline_code="df.groupby('user_id').agg({'amount': 'sum'})",
         file_path="models/sales/daily_sales.sql",
         schema_info="sales(order_id, customer_id, amount, created_at)",
-        runbook="",
+        # ไม่ส่ง runbook → auto-load จาก runbooks/<issue_id>.md ถ้ามี
     )
 
     # config: checkpointer thread + LangFuse trace (ถ้าตั้ง key) group ด้วย run_id
