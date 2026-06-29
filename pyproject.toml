@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pipeline-debug-agent"
 version = "0.1.0"
@@ -22,6 +26,12 @@ github = [
 observability = [
     "langfuse>=2.0",   # open-source observability (ทางเลือกแทน LangSmith)
 ]
+
+# flat layout (app ไม่ใช่ library) — บอก setuptools ตรงๆ ว่า package/module ไหนบ้าง
+# ไม่งั้น auto-discovery จะ error "Multiple top-level packages" (demo/tests ไม่ใช่ของที่จะ install)
+[tool.setuptools]
+packages = ["config", "nodes", "integrations", "observability"]
+py-modules = ["graph", "state"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
