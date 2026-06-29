@@ -36,6 +36,10 @@ export PIPELINE_TARGET_ENV=staging
 export WAREHOUSE=iceberg          # default อยู่แล้ว
 export ICEBERG_CATALOG=default    # ชื่อ catalog ใน ~/.pyiceberg.yaml
 
+# runner รัน fix SQL: duckdb (default, offline harness) | trino (เขียน Iceberg จริง)
+#   trino: pip install -e .[trino] + ตั้ง TRINO_HOST/TRINO_CATALOG/TRINO_SCHEMA
+export RUNNER=duckdb
+
 # เปิด PR จริงผ่าน GitHub (service account จำกัดสิทธิ์: create branch + open PR เท่านั้น)
 #   ไม่ตั้ง → git_client เป็น stub พิมพ์เฉยๆ (offline). ติดตั้ง: pip install -e .[github]
 export GITHUB_TOKEN=ghp_...           # token ของ service account (ห้ามใช้ของคน)
@@ -94,7 +98,8 @@ REPLACE`) + กรอง null → ผ่าน semantic check (non-empty + no-nu
 
 ## ต้องแก้ตรงไหนก่อนใช้จริง (มองหา `TODO`)
 
-1. `integrations/runner.py` — รัน SQL บน DuckDB staging แล้ว (แทนด้วย dbt/Airflow ได้)
+1. ✅ `integrations/runner.py` — รัน fix SQL: `RUNNER=trino` (เขียน Iceberg จริง) หรือ
+   `duckdb` (harness offline). ลองจริง local: `dev/iceberg/` (มี Trino + verify_loop.py)
 2. ✅ `integrations/git_client.py` — เปิด PR จริงผ่าน GitHub API แล้ว (PyGithub)
    ตั้ง `GITHUB_TOKEN`+`GITHUB_REPO` เพื่อเปิดโหมดจริง / ไม่ตั้ง = stub offline
 3. ✅ `integrations/lineage.py` — นับ blast radius จาก dbt `manifest.json` แล้ว

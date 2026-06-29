@@ -6,18 +6,22 @@
 ## เริ่ม
 
 ```bash
-# 1) ยก stack ขึ้น (REST catalog :8181, MinIO :9000 / console :9001)
+# 1) ยก stack ขึ้น (REST :8181, MinIO :9000/:9001, Trino :8080)
 docker compose -f dev/iceberg/docker-compose.yml up -d
 
-# 2) ติดตั้ง client (s3fs สำหรับคุยกับ MinIO)
-pip install -e ".[iceberg]" "pyiceberg[s3fs]"
+# 2) ติดตั้ง client (s3fs คุยกับ MinIO, trino รัน fix SQL)
+pip install -e ".[iceberg,trino]" "pyiceberg[s3fs]"
 
 # 3) ชี้ PyIceberg มาที่ config ของ local (catalog ชื่อ "local")
 export PYICEBERG_HOME=$PWD/dev/iceberg
 
-# 4) smoke test — สร้าง table จริง + เขียนข้อมูล + อ่านด้วย IcebergAdapter ของเรา
+# 4a) smoke test (read path) — เขียน table จริ ง + อ่านด้วย IcebergAdapter
 python dev/iceberg/smoke_test.py
-# คาดหวัง: ✅ SMOKE TEST ผ่าน (row_count=4, null(user_id)=1, sum(amount)=159.0)
+# ✅ SMOKE TEST ผ่าน (row_count=4, null(user_id)=1, sum(amount)=159.0)
+
+# 4b) verify full loop — Trino รัน fix (execute) → IcebergAdapter อ่าน (Check)
+python dev/iceberg/verify_loop.py
+# ✅ VERIFY ผ่าน (row_count=3, null(user_id)=0, sum(amount)=65.0)
 
 # หยุด (ข้อมูลใน MinIO เป็น ephemeral — หายตอน down)
 docker compose -f dev/iceberg/docker-compose.yml down
@@ -43,9 +47,15 @@ baseline_row_count: 4
 
 | ไฟล์ | หน้าที่ |
 |------|--------|
-| `docker-compose.yml` | REST catalog + MinIO + mc (สร้าง bucket `warehouse` อัตโนมัติ) |
+| `docker-compose.yml` | REST catalog + MinIO + mc + **Trino** (Iceberg connector) |
+| `trino/iceberg.properties` | catalog config ของ Trino → ต่อ REST + MinIO เดียวกัน |
 | `.pyiceberg.yaml` | config catalog `local` (creds dev เท่านั้น) |
-| `smoke_test.py` | สร้าง/เขียน table จริง แล้วอ่านด้วย `IcebergAdapter` → ยืนยันถูกต้อง |
+| `smoke_test.py` | read path — เขียน table จริงแล้วอ่านด้วย `IcebergAdapter` |
+| `verify_loop.py` | full loop — `RUNNER=trino` รัน fix (execute) → อ่าน (Check) |
+
+> รัน agent ให้ execute ลง Iceberg จริง: `export RUNNER=trino` (+ `TRINO_HOST`/`TRINO_CATALOG`/
+> `TRINO_SCHEMA` ถ้าไม่ใช่ default `localhost`/`iceberg`/`staging`) — default `RUNNER=duckdb`
+> คือ harness offline ของ demo/test
 
 > ⚠️ creds (`admin`/`password`) เป็นของ local dev เท่านั้น — prod ใช้ catalog/IAM จริง
 > และต้องชี้ไป **staging** เสมอ (adapter บล็อก `PIPELINE_TARGET_ENV=production`)

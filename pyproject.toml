@@ -30,6 +30,9 @@ iceberg = [
     #          และ catalog client ตามที่ใช้ (REST/Glue/Hive/SQL)
     # (pyarrow เป็น core dep อยู่แล้ว — ใช้คำนวณสถิติจาก scan)
 ]
+trino = [
+    "trino>=0.328",    # รัน fix SQL ลง Iceberg จริงผ่าน Trino (RUNNER=trino)
+]
 observability = [
     "langfuse>=2.0",   # open-source observability (ทางเลือกแทน LangSmith)
 ]
