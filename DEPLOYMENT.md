@@ -35,8 +35,9 @@
 - [ ] ตั้ง `PIPELINE_TARGET_ENV=staging` (ค่า `production` จะถูก **ปฏิเสธ** ทั้งใน runner และ warehouse adapter)
 - [ ] **อ่าน (validation) = Apache Iceberg:** `pip install -e .[iceberg]` + ตั้ง `~/.pyiceberg.yaml`
       (catalog/creds ของ staging) — ชี้ `iceberg_table` ใน check spec ไป namespace ของ staging
-- [ ] **รัน fix (runner):** ตั้ง `PIPELINE_DUCKDB` (engine harness) หรือแทน `execute_pipeline()`
-      ด้วย engine จริง (dbt/Trino/Spark) ที่เขียนลง Iceberg staging
+- [ ] **รัน fix (runner):** ตั้ง `RUNNER=trino` + `TRINO_HOST/PORT/CATALOG/SCHEMA` (เขียน Iceberg
+      จริง) — หรือ `RUNNER=duckdb` + `PIPELINE_DUCKDB` (harness offline) สำหรับ dev/test
+      (ลองจริง local ด้วย docker ได้ที่ `dev/iceberg/` — มี Trino + verify_loop.py)
 - [ ] ยืนยันว่า staging **แยกขาดจาก production** จริง — catalog / namespace / warehouse คนละตัว
 - [ ] ทดสอบ kill switch: ลองตั้ง `PIPELINE_TARGET_ENV=production` แล้วต้องโดน block ทันที
 - [ ] ตรวจว่า adapter อ่าน Iceberg แบบ **read-only** (validation ไม่เขียน staging)
@@ -108,7 +109,9 @@
 | `PIPELINE_TARGET_ENV` | ✅ | บังคับ staging | default `staging` (ค่า `production` ถูก block) |
 | `WAREHOUSE` | — | engine ของ Check (validation) | default `iceberg` |
 | `ICEBERG_CATALOG` | ✅* | ชื่อ catalog ใน `~/.pyiceberg.yaml` | default `default` |
-| `PIPELINE_DUCKDB` | ✅* | DuckDB harness ที่ runner รัน fix SQL | runner raise (กันเผลอรันผิดที่) |
+| `RUNNER` | — | engine รัน fix SQL: `trino`/`duckdb` | default `duckdb` (harness) |
+| `TRINO_HOST` / `TRINO_CATALOG` / `TRINO_SCHEMA` | ✅* | Trino → Iceberg | default `localhost`/`iceberg`/`staging` |
+| `PIPELINE_DUCKDB` | — | DuckDB harness (เมื่อ `RUNNER=duckdb`) | runner raise ถ้าไม่ตั้ง |
 | `CHECKS_DIR` | — | ที่เก็บ check spec | default `config/checks` |
 | `DBT_MANIFEST_PATH` | ✅* | lineage / blast radius | คืน UNKNOWN → ทุก fix ตก T3 |
 | `GITHUB_TOKEN` | ✅* | service account เปิด PR | git_client เป็น stub (พิมพ์เฉยๆ) |
