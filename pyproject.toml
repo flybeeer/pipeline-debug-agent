@@ -36,6 +36,11 @@ trino = [
 observability = [
     "langfuse>=2.0",   # open-source observability (ทางเลือกแทน LangSmith)
 ]
+airflow = [
+    # auto-trigger เมื่อ pipeline fail (ดู airflow/dags/ + integrations/airflow_trigger.py)
+    # ติดตั้งบน Airflow worker เท่านั้น — โมดูล agent import airflow แบบ lazy จึงไม่จำเป็นบน CI
+    "apache-airflow>=2.7",
+]
 
 # flat layout (app ไม่ใช่ library) — บอก setuptools ตรงๆ ว่า package/module ไหนบ้าง
 # ไม่งั้น auto-discovery จะ error "Multiple top-level packages" (demo/tests ไม่ใช่ของที่จะ install)
