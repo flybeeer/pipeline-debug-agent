@@ -1,0 +1,48 @@
+name: CI
+
+# รัน lint + test ทุก push และทุก PR เข้า main
+# (auto-merge ของ T1 พึ่ง required check นี้ — ดู DEPLOYMENT.md Phase 3)
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# ยกเลิก run เก่าของ branch เดียวกันเมื่อมี push ใหม่ (ประหยัด CI minute)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install ruff
+        run: pip install -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check . --output-format=github
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install (พร้อม extras ทั้งหมด เพื่อ test ว่า install ได้จริง)
+        run: pip install -e ".[dev,github,observability]"
+      - name: Pytest
+        # test รัน offline ล้วน — ไม่มี secret/network (fake LLM + DuckDB ชั่วคราว)
+        env:
+          PIPELINE_TARGET_ENV: staging
+        run: pytest tests/ -v

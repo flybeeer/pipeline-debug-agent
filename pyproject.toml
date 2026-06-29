@@ -1,0 +1,37 @@
+[project]
+name = "pipeline-debug-agent"
+version = "0.1.0"
+description = "AI agent ที่ debug data pipeline ที่ fail แล้วเปิด PR ให้คนรีวิว (LangGraph)"
+requires-python = ">=3.10"
+dependencies = [
+    "langgraph>=0.4",
+    "langchain-anthropic>=0.2",
+    "duckdb>=1.0",     # query สถิติ output บน staging (semantic validation)
+    "pyyaml>=6.0",     # โหลด per-issue check config (config/checks/<issue_id>.yaml)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "pre-commit>=3.5",
+]
+github = [
+    "PyGithub>=2.0",   # เปิด PR จริงผ่าน GitHub API (โหมด offline/stub ไม่ต้องใช้)
+]
+observability = [
+    "langfuse>=2.0",   # open-source observability (ทางเลือกแทน LangSmith)
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# E/F = pyflakes+pycodestyle, I = isort, UP = pyupgrade, B = bugbear
+select = ["E", "F", "I", "UP", "B"]
+

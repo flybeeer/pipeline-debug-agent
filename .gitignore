@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtualenv
+.venv/
+venv/
+env/
+
+# Test / lint / type caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# DuckDB / staging data (ห้าม commit ข้อมูล — กฎเหล็ก #3/#5)
+*.duckdb
+*.duckdb.wal
+
+# dbt artifacts
+target/
+dbt_packages/
+logs/
+
+# Secrets / local env (ห้าม commit key เด็ดขาด)
+.env
+.env.*
+*.pem
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

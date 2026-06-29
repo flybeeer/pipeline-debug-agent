@@ -1,0 +1,25 @@
+# Pre-commit hooks — รัน lint + test ก่อน commit (กันโค้ดพังเข้า branch ตั้งแต่ต้นทาง)
+# ติดตั้ง:  pip install -e ".[dev]" && pre-commit install
+# รันมือทั้งหมด:  pre-commit run --all-files
+#
+# ใช้ repo: local + language: system → ใช้ ruff/pytest จาก env เดียวกับ CI
+# (source of truth เดียว — config ruff อยู่ใน pyproject.toml ที่เดียว)
+
+repos:
+  - repo: local
+    hooks:
+      # lint + auto-fix เฉพาะไฟล์ที่แก้ (เร็ว)
+      - id: ruff
+        name: ruff (lint + autofix)
+        entry: ruff check --fix
+        language: system
+        types: [python]
+        require_serial: true
+
+      # รัน test ทั้งชุดก่อน commit — suite เร็ว (~0.5s) และ offline ล้วน
+      - id: pytest
+        name: pytest
+        entry: pytest tests/ -q
+        language: system
+        pass_filenames: false   # ไม่ส่งชื่อไฟล์ — รันทั้ง suite เสมอ
+        always_run: true

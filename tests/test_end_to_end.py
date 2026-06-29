@@ -1,0 +1,91 @@
+"""
+ทดสอบ loop เต็มวง (Action→Check→Repeat→Review) แบบ offline เป็น regression guard
+ใช้ fake LLM + DuckDB staging จริง — ไม่ยิง network ไม่ต้องมี API key
+(เหมือน demo/run_demo.py แต่เป็น assertion อัตโนมัติ)
+"""
+
+from types import SimpleNamespace
+
+import duckdb
+import yaml
+
+import integrations.runner as runner
+import integrations.validation as validation
+import nodes.tiering as tiering
+from integrations.llm import set_llm
+
+FIXED_SQL = (
+    "CREATE OR REPLACE TABLE daily_sales AS "
+    "SELECT user_id, SUM(amount) AS amount FROM raw_sales "
+    "WHERE user_id IS NOT NULL GROUP BY user_id"
+)
+
+
+class _FakeLLM:
+    def invoke(self, prompt: str):
+        if "แก้โค้ดนี้" in prompt:
+            return SimpleNamespace(content=FIXED_SQL)
+        return SimpleNamespace(content="null user_id — กรองออก + ทำ idempotent")
+
+
+def test_full_loop_reaches_auto_merge(tmp_path, monkeypatch):
+    # ── staging DuckDB + source ที่มี null user_id ──
+    db = tmp_path / "staging.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE raw_sales (user_id INTEGER, amount DOUBLE)")
+    con.executemany(
+        "INSERT INTO raw_sales VALUES (?, ?)",
+        [(1, 10.0), (1, 5.0), (2, 20.0), (3, 30.0), (None, 99.0)],
+    )
+    con.close()
+
+    # ── check spec ต่อ issue ──
+    checks_dir = tmp_path / "checks"
+    checks_dir.mkdir()
+    (checks_dir / "e2e.yaml").write_text(yaml.safe_dump({
+        "database": str(db),
+        "target_table": "daily_sales",
+        "key_columns": ["user_id"],
+        "sum_columns": ["amount"],
+        "baseline_row_count": 3,
+        "row_count_tolerance": 0.10,
+    }))
+
+    # ── ชี้ runner/validation ไป staging ชั่วคราว (module globals อ่าน env ตอน import แล้ว) ──
+    monkeypatch.setattr(runner, "TARGET_ENV", "staging")
+    monkeypatch.setattr(runner, "PIPELINE_DUCKDB", str(db))
+    monkeypatch.setattr(validation, "TARGET_ENV", "staging")
+    monkeypatch.setattr(validation, "CHECKS_DIR", str(checks_dir))
+    # lineage: daily_sales มี downstream 1 ตัว → blast เล็ก → ผ่านเงื่อนไข T1
+    monkeypatch.setattr(tiering, "count_downstream", lambda _fp: 1)
+
+    set_llm(_FakeLLM())
+    try:
+        from graph import build_app
+        from state import new_state
+
+        app = build_app()
+        result = app.invoke(
+            new_state(
+                issue_id="e2e",
+                error_log="null user_id",
+                pipeline_code="INSERT INTO daily_sales ...",
+                file_path="models/sales/daily_sales.sql",
+                runbook="กรอง null ก่อน aggregate",
+            ),
+            config={"configurable": {"thread_id": "e2e"}},
+        )
+    finally:
+        set_llm(None)   # คืนค่าเดิม ไม่รบกวน test อื่น
+
+    assert result["status"] == "auto_merged"
+    assert result["tier"] == "T1"
+    assert result["test_result"] == "PASS"
+    assert result["semantic_result"].startswith("PASS")
+    assert result["attempts"] == 1
+
+    # output ใน staging ต้องไม่มี null user_id แล้ว
+    con = duckdb.connect(str(db), read_only=True)
+    rows = con.execute("SELECT user_id FROM daily_sales").fetchall()
+    con.close()
+    assert rows and all(r[0] is not None for r in rows)

@@ -1,0 +1,28 @@
+# config/checks/<issue_id>.yaml — Semantic check spec ต่อ issue
+# =============================================================
+# ตั้งชื่อไฟล์ให้ตรงกับ issue_id เช่น issue "null-userid-042"
+#   → config/checks/null-userid-042.yaml
+# validate_output_semantics จะโหลดไฟล์นี้อัตโนมัติตาม state["issue_id"]
+# ถ้าไม่มีไฟล์ → ถือว่า UNVERIFIED (fail-closed) ไม่ยอมเคลม success
+#
+# 🚨 database ต้องชี้ไป staging/test เท่านั้น — ห้าม prod
+
+# path ไฟล์ DuckDB ของ staging ที่ fix เขียน output ลงไป (อ่าน read-only)
+database: staging/warehouse.duckdb
+
+# table/view ที่ fix สร้าง output (รองรับ schema-qualified เช่น main.daily_sales)
+target_table: daily_sales
+
+# คอลัมน์ key ที่ห้ามมี null — null ใน key มักลามไป join/dedup ผิดทั้งสาย
+key_columns:
+  - user_id
+
+# คอลัมน์ตัวเลขที่อยากดึงผลรวมมาเก็บ (ไว้ reconcile ยอด / ต่อ check เพิ่มภายหลัง)
+sum_columns:
+  - amount
+
+# row count ของ run ก่อนหน้า (baseline) ไว้เทียบ drift — ลบออกได้ถ้ายังไม่มี
+baseline_row_count: 1000
+
+# tolerance ของ row_count_within (สัดส่วน) — default 0.10 (±10%)
+row_count_tolerance: 0.10
