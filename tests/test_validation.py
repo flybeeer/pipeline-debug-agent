@@ -1,13 +1,14 @@
 """
 ทดสอบ semantic validation layer — ส่วน Check ที่สำคัญที่สุด (กฎเหล็ก #4)
-แบ่งเป็น: (1) check รายข้อ (pure) (2) validate รวม (mock) (3) DuckDB end-to-end จริง
+แบ่งเป็น: (1) check รายข้อ (pure) (2) validate รวม (mock) (3) Iceberg end-to-end (mock catalog)
 รัน: pytest tests/ -v
 """
 
-import duckdb
+import pyarrow as pa
 import pytest
 
 import integrations.validation as v
+import integrations.warehouse as wh
 from integrations.validation import (
     OutputStats,
     no_nulls_in_keys,
@@ -96,23 +97,32 @@ def test_validate_fails_on_null_keys(monkeypatch):
     assert "no_nulls_in_keys" in detail
 
 
-# ── (3) DuckDB end-to-end จริง (สร้าง staging ชั่วคราว + config จริง) ──
+# ── (3) Iceberg end-to-end (mock catalog → validate ผ่าน adapter จริง) ──
 
-def _make_staging(tmp_path, rows):
-    """สร้างไฟล์ DuckDB staging ชั่วคราวพร้อมตาราง daily_sales"""
-    db = tmp_path / "warehouse.duckdb"
-    con = duckdb.connect(str(db))
-    con.execute("CREATE TABLE daily_sales (user_id INTEGER, amount DOUBLE)")
-    con.executemany("INSERT INTO daily_sales VALUES (?, ?)", rows)
-    con.close()
-    return db
+def _patch_iceberg(monkeypatch, **columns):
+    """ให้ catalog คืน table ที่ scan().to_arrow() = pyarrow.Table จาก columns"""
+    arrow = pa.table(columns)
+
+    class _Scan:
+        def to_arrow(self):
+            return arrow
+
+    class _Table:
+        def scan(self):
+            return _Scan()
+
+    class _Catalog:
+        def load_table(self, identifier):
+            return _Table()
+
+    monkeypatch.setattr(wh, "_load_iceberg_catalog", lambda name: _Catalog())
 
 
-def _write_config(tmp_path, db, **overrides):
+def _write_config(tmp_path, **overrides):
     import yaml
     cfg = {
-        "database": str(db),
-        "target_table": "daily_sales",
+        "warehouse": "iceberg",
+        "iceberg_table": "staging.daily_sales",
         "key_columns": ["user_id"],
         "sum_columns": ["amount"],
         "baseline_row_count": 3,
@@ -125,9 +135,9 @@ def _write_config(tmp_path, db, **overrides):
     return checks_dir
 
 
-def test_end_to_end_clean_data_passes(tmp_path):
-    db = _make_staging(tmp_path, [(1, 10.0), (2, 20.0), (3, 30.0)])
-    checks_dir = _write_config(tmp_path, db)
+def test_end_to_end_clean_data_passes(tmp_path, monkeypatch):
+    _patch_iceberg(monkeypatch, user_id=[1, 2, 3], amount=[10.0, 20.0, 30.0])
+    checks_dir = _write_config(tmp_path)
 
     ok, detail = validate_output_semantics(
         {"issue_id": "demo"}, checks_dir=str(checks_dir)
@@ -135,9 +145,9 @@ def test_end_to_end_clean_data_passes(tmp_path):
     assert ok is True, detail
 
 
-def test_end_to_end_null_key_fails(tmp_path):
-    db = _make_staging(tmp_path, [(1, 10.0), (None, 20.0), (3, 30.0)])
-    checks_dir = _write_config(tmp_path, db)
+def test_end_to_end_null_key_fails(tmp_path, monkeypatch):
+    _patch_iceberg(monkeypatch, user_id=[1, None, 3], amount=[10.0, 20.0, 30.0])
+    checks_dir = _write_config(tmp_path)
 
     ok, detail = validate_output_semantics(
         {"issue_id": "demo"}, checks_dir=str(checks_dir)
@@ -146,10 +156,10 @@ def test_end_to_end_null_key_fails(tmp_path):
     assert "no_nulls_in_keys" in detail
 
 
-def test_end_to_end_row_drift_fails(tmp_path):
+def test_end_to_end_row_drift_fails(tmp_path, monkeypatch):
     # baseline=3 แต่มีจริงแค่ 1 แถว → drift หลุด 10% → fail
-    db = _make_staging(tmp_path, [(1, 10.0)])
-    checks_dir = _write_config(tmp_path, db)
+    _patch_iceberg(monkeypatch, user_id=[1], amount=[10.0])
+    checks_dir = _write_config(tmp_path)
 
     ok, detail = validate_output_semantics(
         {"issue_id": "demo"}, checks_dir=str(checks_dir)
@@ -158,12 +168,11 @@ def test_end_to_end_row_drift_fails(tmp_path):
     assert "row_count_within" in detail
 
 
-def test_fetch_refuses_production(tmp_path, monkeypatch):
-    """guard: ตั้ง env=production แล้วต้องปฏิเสธการอ่าน"""
-    db = _make_staging(tmp_path, [(1, 10.0)])
+def test_fetch_refuses_production(monkeypatch):
+    """guard: ตั้ง env=production แล้วต้องปฏิเสธการอ่าน (ที่ชั้น fetch_output_stats)"""
     monkeypatch.setattr(v, "TARGET_ENV", "production")
     with pytest.raises(RuntimeError, match="production"):
-        v.fetch_output_stats({}, {"database": str(db), "target_table": "daily_sales"})
+        v.fetch_output_stats({}, {"warehouse": "iceberg", "iceberg_table": "s.t"})
 
 
 def test_unsafe_identifier_rejected():

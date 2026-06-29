@@ -1,7 +1,7 @@
 """
 ทดสอบ loop เต็มวง (Action→Check→Repeat→Review) แบบ offline เป็น regression guard
-ใช้ fake LLM + DuckDB staging จริง — ไม่ยิง network ไม่ต้องมี API key
-(เหมือน demo/run_demo.py แต่เป็น assertion อัตโนมัติ)
+ใช้ fake LLM + DuckDB เป็น harness รัน fix SQL + Iceberg adapter อ่าน output
+(catalog เป็น fake ที่อ่าน duckdb output → arrow แทน Iceberg จริง) — offline ล้วน
 """
 
 from types import SimpleNamespace
@@ -11,6 +11,7 @@ import yaml
 
 import integrations.runner as runner
 import integrations.validation as validation
+import integrations.warehouse as warehouse
 import nodes.tiering as tiering
 from integrations.llm import set_llm
 
@@ -20,6 +21,33 @@ FIXED_SQL = (
     "WHERE user_id IS NOT NULL GROUP BY user_id"
 )
 
+
+def _duckdb_backed_catalog(db_path):
+    """fake Iceberg catalog — อ่าน output ที่ runner เขียนลง duckdb แล้วคืนเป็น Arrow
+    (แทน catalog จริง: prod คือ REST/Glue ส่วน offline อ่านจาก duckdb harness)"""
+    class _Scan:
+        def __init__(self, ident):
+            self._ident = ident
+
+        def to_arrow(self):
+            con = duckdb.connect(db_path, read_only=True)
+            try:
+                return con.execute(f'SELECT * FROM "{self._ident}"').to_arrow_table()
+            finally:
+                con.close()
+
+    class _Table:
+        def __init__(self, ident):
+            self._ident = ident
+
+        def scan(self):
+            return _Scan(self._ident)
+
+    class _Catalog:
+        def load_table(self, identifier):
+            return _Table(identifier)
+
+    return _Catalog()
 
 class _FakeLLM:
     def invoke(self, prompt: str):
@@ -39,23 +67,27 @@ def test_full_loop_reaches_auto_merge(tmp_path, monkeypatch):
     )
     con.close()
 
-    # ── check spec ต่อ issue ──
+    # ── check spec ต่อ issue (warehouse: iceberg) ──
     checks_dir = tmp_path / "checks"
     checks_dir.mkdir()
     (checks_dir / "e2e.yaml").write_text(yaml.safe_dump({
-        "database": str(db),
-        "target_table": "daily_sales",
+        "warehouse": "iceberg",
+        "iceberg_table": "daily_sales",
         "key_columns": ["user_id"],
         "sum_columns": ["amount"],
         "baseline_row_count": 3,
         "row_count_tolerance": 0.10,
     }))
 
-    # ── ชี้ runner/validation ไป staging ชั่วคราว (module globals อ่าน env ตอน import แล้ว) ──
+    # ── runner = duckdb harness (รัน fix SQL) / validation = iceberg (อ่าน output) ──
     monkeypatch.setattr(runner, "TARGET_ENV", "staging")
     monkeypatch.setattr(runner, "PIPELINE_DUCKDB", str(db))
     monkeypatch.setattr(validation, "TARGET_ENV", "staging")
     monkeypatch.setattr(validation, "CHECKS_DIR", str(checks_dir))
+    monkeypatch.setattr(warehouse, "TARGET_ENV", "staging")
+    # Iceberg catalog (fake) อ่าน output จาก duckdb ที่ runner เขียน → arrow
+    monkeypatch.setattr(warehouse, "_load_iceberg_catalog",
+                        lambda name: _duckdb_backed_catalog(str(db)))
     # lineage: daily_sales มี downstream 1 ตัว → blast เล็ก → ผ่านเงื่อนไข T1
     monkeypatch.setattr(tiering, "count_downstream", lambda _fp: 1)
 

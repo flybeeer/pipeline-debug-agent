@@ -5,8 +5,8 @@ demo/run_demo.py — รัน agent ทั้งวงจร "จริง" แ
 
 ทำให้เห็น loop เต็ม Goal→Context→Action→Check→Repeat→Review โดย:
   • LLM        → fake offline (ไม่ต้องมี ANTHROPIC_API_KEY, ไม่ยิง network)
-  • runner     → รัน SQL ของ fix ลง DuckDB staging จริง
-  • validation → อ่าน output table จาก DuckDB เดียวกัน ตรวจ semantic จริง
+  • runner     → รัน SQL ของ fix ลง DuckDB (engine harness แบบ offline)
+  • validation → อ่าน output ผ่าน Iceberg adapter (catalog fake อ่าน duckdb → Arrow)
   • git/PR     → stub (พิมพ์ว่าเปิด PR — ไม่แตะ repo จริง)
 
 scenario: pipeline `daily_sales` เจอ null ใน user_id → fix เขียนใหม่ให้ idempotent
@@ -75,16 +75,44 @@ def write_manifest() -> None:
 
 
 def write_check_config() -> None:
-    """check spec ต่อ issue — หลัง fix กรอง null แล้ว เหลือ user 1/2/3 = 3 แถว"""
+    """check spec ต่อ issue (warehouse: iceberg) — หลังกรอง null เหลือ user 1/2/3 = 3 แถว"""
     cfg = {
-        "database": str(STAGING_DB),
-        "target_table": "daily_sales",
+        "warehouse": "iceberg",
+        "iceberg_table": "daily_sales",
         "key_columns": ["user_id"],          # ห้าม null
         "sum_columns": ["amount"],
         "baseline_row_count": 3,             # คาดว่าได้ 3 user หลังกรอง null
         "row_count_tolerance": 0.10,
     }
     (CHECKS_DIR / f"{ISSUE_ID}.yaml").write_text(yaml.safe_dump(cfg))
+
+
+def duckdb_backed_catalog(name):
+    """fake Iceberg catalog (offline) — อ่าน output ที่ runner เขียนลง duckdb → Arrow
+    prod คือ REST/Glue catalog จริง ส่วน demo อ่านจาก duckdb harness เพื่อรันออฟไลน์"""
+    class _Scan:
+        def __init__(self, ident):
+            self._ident = ident
+
+        def to_arrow(self):
+            con = duckdb.connect(str(STAGING_DB), read_only=True)
+            try:
+                return con.execute(f'SELECT * FROM "{self._ident}"').to_arrow_table()
+            finally:
+                con.close()
+
+    class _Table:
+        def __init__(self, ident):
+            self._ident = ident
+
+        def scan(self):
+            return _Scan(self._ident)
+
+    class _Catalog:
+        def load_table(self, identifier):
+            return _Table(identifier)
+
+    return _Catalog()
 
 
 # ── fake LLM: ตอบแบบ deterministic ตาม prompt (ไม่ยิง network) ──
@@ -117,6 +145,10 @@ def main() -> None:
     # inject fake LLM "ก่อน" invoke (get_llm อ่าน override ตอนเรียก)
     from integrations.llm import set_llm
     set_llm(FakeLLM())
+
+    # Iceberg catalog (offline fake) ให้ validation อ่าน output จาก duckdb harness
+    import integrations.warehouse as warehouse
+    warehouse._load_iceberg_catalog = duckdb_backed_catalog
 
     from graph import build_app
     from state import new_state
