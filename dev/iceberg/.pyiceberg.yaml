@@ -1,0 +1,15 @@
+# PyIceberg config สำหรับต่อ local Iceberg (docker-compose ในโฟลเดอร์นี้)
+# ชี้ PyIceberg มาที่ไฟล์นี้ด้วย:  export PYICEBERG_HOME=$PWD/dev/iceberg
+# (PyIceberg อ่าน $PYICEBERG_HOME/.pyiceberg.yaml)
+#
+# creds เป็น local dev เท่านั้น — prod ใช้ ~/.pyiceberg.yaml ของจริง (REST/Glue + IAM)
+
+catalog:
+  local:
+    type: rest
+    uri: http://localhost:8181
+    s3.endpoint: http://localhost:9000
+    s3.access-key-id: admin
+    s3.secret-access-key: password
+    s3.region: us-east-1
+    s3.path-style-access: "true"

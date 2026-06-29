@@ -32,6 +32,7 @@ export PIPELINE_TARGET_ENV=staging
 # warehouse ของ Check (validation) = Apache Iceberg (อ่านผ่าน PyIceberg + PyArrow)
 #   ติดตั้ง: pip install -e .[iceberg] + ตั้ง ~/.pyiceberg.yaml (catalog/creds)
 #   DuckDB เหลือเป็น engine รัน fix SQL แบบ offline ของ runner/demo/test เท่านั้น
+#   อยากลอง Iceberg จริงแบบ local (docker) → ดู dev/iceberg/README.md
 export WAREHOUSE=iceberg          # default อยู่แล้ว
 export ICEBERG_CATALOG=default    # ชื่อ catalog ใน ~/.pyiceberg.yaml
 
