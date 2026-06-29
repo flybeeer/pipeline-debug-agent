@@ -5,13 +5,15 @@
 # validate_output_semantics จะโหลดไฟล์นี้อัตโนมัติตาม state["issue_id"]
 # ถ้าไม่มีไฟล์ → ถือว่า UNVERIFIED (fail-closed) ไม่ยอมเคลม success
 #
-# 🚨 database ต้องชี้ไป staging/test เท่านั้น — ห้าม prod
+# 🚨 ชี้ไป staging/test เท่านั้น — ห้าม prod (adapter บล็อก PIPELINE_TARGET_ENV=production)
 
-# path ไฟล์ DuckDB ของ staging ที่ fix เขียน output ลงไป (อ่าน read-only)
-database: staging/warehouse.duckdb
+# engine ของ Check — ตอนนี้รองรับ iceberg เท่านั้น (ละไว้ = env WAREHOUSE, default iceberg)
+warehouse: iceberg
 
-# table/view ที่ fix สร้าง output (รองรับ schema-qualified เช่น main.daily_sales)
-target_table: daily_sales
+# Apache Iceberg: identifier ของ table ที่ fix สร้าง output ("namespace.table")
+iceberg_table: staging.daily_sales
+# catalog: default                        # ชื่อ catalog (ละไว้ = env ICEBERG_CATALOG)
+# credential/props ตั้งผ่าน ~/.pyiceberg.yaml หรือ env PYICEBERG_* (มาตรฐาน PyIceberg)
 
 # คอลัมน์ key ที่ห้ามมี null — null ใน key มักลามไป join/dedup ผิดทั้งสาย
 key_columns:
