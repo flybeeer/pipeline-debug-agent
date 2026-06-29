@@ -1,5 +1,7 @@
 # Pipeline Debugging Agent
 
+[![CI](https://github.com/flybeeer/pipeline-debug-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/flybeeer/pipeline-debug-agent/actions/workflows/ci.yml)
+
 AI agent ที่ช่วย debug data pipeline ที่ fail โดยวน loop วิเคราะห์ → เสนอ fix → ทดสอบ
 จนผ่าน แล้วเปิด Pull Request ให้คนรีวิวก่อน merge สร้างด้วย **LangGraph**
 
